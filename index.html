@@ -1,0 +1,112 @@
+<title>잿불의 왕관</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@500;700;900&display=swap">
+<style>
+  /* Layout: one 16:9 game screen centred on a dark stage; touch pad overlays the screen on phones. */
+  :root {
+    --stage: #120d0a;
+    --ink: #f6ead2;
+    --ember: #f0a63a;
+    --teal: #57d6c6;
+    --panel: rgba(20, 14, 10, 0.72);
+    --font-display: "Black Han Sans", "Noto Sans KR", system-ui, sans-serif;
+    --font-body: "Noto Sans KR", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--stage);
+    color: var(--ink);
+    font-family: var(--font-body);
+    margin: 0;
+    overflow: hidden;
+    padding-left: max(0px, env(safe-area-inset-left, 0px));
+    padding-right: max(0px, env(safe-area-inset-right, 0px));
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #wrap {
+    position: relative;
+    height: 100%;
+    display: grid;
+    place-items: center;
+  }
+  #screen {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    width: min(100%, calc(100dvh * 16 / 9));
+    max-width: 100%;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    image-rendering: auto;
+  }
+  #touch { position: absolute; inset: 0; pointer-events: none; }
+  #touch[hidden] { display: none !important; }
+  #stick {
+    position: absolute;
+    left: 3%; bottom: 6%;
+    width: 22%; aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,240,210,0.10), rgba(255,240,210,0.04) 70%);
+    border: 2px solid rgba(255,240,210,0.25);
+    pointer-events: auto;
+  }
+  #knob {
+    position: absolute; left: 50%; top: 50%;
+    width: 38%; aspect-ratio: 1;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255,240,210,0.35);
+  }
+  .btns {
+    position: absolute; right: 3%; bottom: 6%;
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 4%;
+    width: 24%;
+    pointer-events: auto;
+  }
+  .btn {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px solid rgba(255,240,210,0.35);
+    background: rgba(30,20,12,0.45);
+    color: var(--ink);
+    font: 700 clamp(10px, 1.6vw, 16px) var(--font-body);
+    display: grid; place-items: center;
+  }
+  .btn.atk { grid-column: 2; grid-row: 2; background: rgba(170,50,30,0.55); }
+  .btn.jmp { grid-column: 1; grid-row: 2; }
+  .btn.spc { grid-column: 2; grid-row: 1; background: rgba(40,110,120,0.55); }
+  .btn.on { filter: brightness(1.6); }
+  #fs {
+    position: absolute; top: 2%; right: 1.5%;
+    pointer-events: auto;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid rgba(255,240,210,0.3); border-radius: 6px;
+    font: 500 12px var(--font-body); padding: 4px 8px;
+  }
+  @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+</style>
+
+<div id="wrap">
+  <div id="screen">
+    <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
+    <div id="touch" hidden>
+      <div id="stick"><div id="knob"></div></div>
+      <div class="btns">
+        <div class="btn spc" data-k="special">마법</div>
+        <div class="btn jmp" data-k="jump">점프</div>
+        <div class="btn atk" data-k="attack">공격</div>
+      </div>
+      <button id="fs" type="button">전체화면</button>
+    </div>
+  </div>
+</div>
+
+<script src="game.js" charset="utf-8"></script>
