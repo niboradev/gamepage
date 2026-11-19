@@ -27,7 +27,8 @@ const FRAMES = {
     chop: { src: "warrior/w_b_chop", ax: 227.2 },
     // walk/run anchors = torso centre + (idle feet anchor - idle torso centre) so poses don't jump
     walk1: { src: "warrior/w_walk1", ax: 266.6 }, walk2: { src: "warrior/w_walk2", ax: 204.5 }, walk3: { src: "warrior/w_walk3", ax: 258.6 },
-    run1: { src: "warrior/w_run1", ax: 303.3 }, run2: { src: "warrior/w_run2", ax: 292.0 }, run3: { src: "warrior/w_run3", ax: 279.5 } } },
+    run1: { src: "warrior/w_run1", ax: 303.3 }, run2: { src: "warrior/w_run2", ax: 292.0 }, run3: { src: "warrior/w_run3", ax: 279.5 },
+    ...Object.fromEntries(Array.from({ length: 27 }, (_, i) => ["vc" + i, { src: "warrior/vc/c" + String(i).padStart(2, "0"), ax: 270.7 }])) } },
   mage: { px: 268 / 535, f: {
     idle: { src: "mage/m_idle", ax: 138 }, cast: { src: "mage/m_cast", ax: 188.5 }, storm: { src: "mage/m_storm", ax: 195.4 },
     walk1: { src: "mage/m_walk1", ax: 162.8 }, walk2: { src: "mage/m_walk2", ax: 130.8 }, walk3: { src: "mage/m_walk3", ax: 178.1 },
@@ -43,6 +44,13 @@ const FRAMES = {
 const ALL_IMAGES = ["warrior", "mage", "orc", "golem", "background", "forest",
   ...new Set(Object.values(FRAMES).flatMap((k) => Object.values(k.f).map((f) => f.src)))];
 
+// warrior combo from video frames (Kling 3.0 clip, 12 fps): frames per combo hit, split into wind-up and strike
+const VIDEO_COMBO = [
+  { wind: [0], strike: [1, 2] },
+  { wind: [3, 4, 5], strike: [6, 7, 8, 9] },
+  { wind: [15, 18, 21], strike: [22, 23, 24, 25, 26] },
+];
+let videoAnim = location.hash !== "#keypose";
 // waves: [type, side(+1 right / -1 left), row 0..2]
 const ZONES = [
   { at: 1280, wave: [["orc", 1, 0], ["orc", 1, 2], ["orc", -1, 1]] },
@@ -212,6 +220,7 @@ window.addEventListener("keydown", (e) => {
   if (!keys.has(e.code)) pressedOnce.add(e.code);
   keys.add(e.code);
   if (e.code === "KeyM") muted = !muted;
+  if (e.code === "KeyV") { videoAnim = !videoAnim; if (G) floatText(G.camX + W / 2, 260, videoAnim ? "공격 애니메이션: 영상 프레임" : "공격 애니메이션: 키 자세", "#9ff6ea"); }
   if (e.code === "Escape" || e.code === "KeyP") togglePause();
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
@@ -997,7 +1006,12 @@ function pickFrame(e) {
   const st = e.st;
   if (e.kind === "player" && e.cls === "warrior") {
     if (e.state === "attack") {
-      const pre = st < WAR_COMBO[e.combo_i].wind;
+      const a = WAR_COMBO[e.combo_i], pre = st < a.wind;
+      if (videoAnim) {
+        const v = VIDEO_COMBO[e.combo_i], list = pre ? v.wind : v.strike;
+        const k = pre ? st / a.wind : (st - a.wind) / ((a.end - a.wind) * 0.75);
+        return "vc" + list[Math.min(list.length - 1, Math.floor(clamp(k, 0, 0.999) * list.length))];
+      }
       return [["wind", "slash"], ["slash", "rise"], ["wind", "chop"]][e.combo_i][pre ? 0 : 1];
     }
     if (e.state === "airatk") return "chop";
@@ -1062,7 +1076,7 @@ function drawActor(e, camX) {
   ctx.save();
   ctx.translate(sx + ox * e.face, sy + oy);
   ctx.scale(face, 1); ctx.rotate(rot); ctx.scale(sqx, sqy);
-  if (e.prevFrame && G.t - e.frameT < 0.07) {           // smear between key poses
+  if (e.prevFrame && G.t - e.frameT < 0.07 && !(fk.startsWith("vc") && e.prevFrame.startsWith("vc"))) {   // smear between key poses
     const pf = set.f[e.prevFrame], pim = pf && IMG[pf.src];
     if (pim) { ctx.globalAlpha = 0.4 * (1 - (G.t - e.frameT) / 0.07); ctx.drawImage(pim, -pf.ax * s, -pim.height * s, pim.width * s, pim.height * s); ctx.globalAlpha = 1; }
   }
@@ -1410,7 +1424,7 @@ function render() {
   ctx.restore();
   drawGrade();
   drawHUD();
-  if (paused) overlay("일시정지", ["P · Esc · 게임패드 START 로 계속", "1P 이동 WASD · 공격 J · 점프 K · 마법 L · 방향 두 번: 달리기", "2P 방향키 · 공격 , · 점프 . · 마법 /   ·   M 소리 켜기/끄기"]);
+  if (paused) overlay("일시정지", ["P · Esc · 게임패드 START 로 계속", "1P 이동 WASD · 공격 J · 점프 K · 마법 L · 방향 두 번: 달리기", "2P 방향키 · 공격 , · 점프 . · 마법 /   ·   M 소리   ·   V 공격 애니메이션 전환"]);
   if (G.mode === "over") overlay("전멸", ["공격 키: 이어하기 (점수 초기화)", "점프 키: 타이틀로"]);
   if (G.mode === "clear") drawResult();
 }
