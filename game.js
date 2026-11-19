@@ -28,7 +28,8 @@ const FRAMES = {
     // walk/run anchors = torso centre + (idle feet anchor - idle torso centre) so poses don't jump
     walk1: { src: "warrior/w_walk1", ax: 266.6 }, walk2: { src: "warrior/w_walk2", ax: 204.5 }, walk3: { src: "warrior/w_walk3", ax: 258.6 },
     run1: { src: "warrior/w_run1", ax: 303.3 }, run2: { src: "warrior/w_run2", ax: 292.0 }, run3: { src: "warrior/w_run3", ax: 279.5 },
-    ...Object.fromEntries(Array.from({ length: 27 }, (_, i) => ["vc" + i, { src: "warrior/vc/c" + String(i).padStart(2, "0"), ax: 270.7 }])) } },
+    // video frames (Kling 3.0, one clip per move, shared crop => shared feet anchor)
+    ...Object.fromEntries(["a_idle", "chop_06", "chop_08", "chop_10", "chop_13", "chop_15", "chop_16", "chop_17", "chop_18", "chop_19", "chop_21", "chop_23", "rise_09", "rise_11", "rise_13", "rise_15", "rise_16", "rise_17", "rise_18", "rise_19", "rise_21", "rise_24", "slash_13", "slash_15", "slash_17", "slash_19", "slash_20", "slash_21", "slash_22", "slash_23", "slash_25", "slash_28", "spin_05", "spin_07", "spin_09", "spin_11", "spin_13", "spin_15", "spin_17", "spin_19", "spin_21", "spin_23", "spin_25", "spin_27", "spin_29", "spin_31"].map((n) => ["mv_" + n, { src: "warrior/mv/" + n, ax: 389.7 }])) } },
   mage: { px: 268 / 535, f: {
     idle: { src: "mage/m_idle", ax: 138 }, cast: { src: "mage/m_cast", ax: 188.5 }, storm: { src: "mage/m_storm", ax: 195.4 },
     walk1: { src: "mage/m_walk1", ax: 162.8 }, walk2: { src: "mage/m_walk2", ax: 130.8 }, walk3: { src: "mage/m_walk3", ax: 178.1 },
@@ -46,10 +47,11 @@ const ALL_IMAGES = ["warrior", "mage", "orc", "golem", "background", "forest",
 
 // warrior combo from video frames (Kling 3.0 clip, 12 fps): frames per combo hit, split into wind-up and strike
 const VIDEO_COMBO = [
-  { wind: [0], strike: [1, 2] },
-  { wind: [3, 4, 5], strike: [6, 7, 8, 9] },
-  { wind: [15, 18, 21], strike: [22, 23, 24, 25, 26] },
+  { wind: ["slash_13", "slash_15", "slash_17"], strike: ["slash_19", "slash_20", "slash_21", "slash_22", "slash_23", "slash_25", "slash_28"] },
+  { wind: ["rise_09", "rise_11", "rise_13"], strike: ["rise_15", "rise_16", "rise_17", "rise_18", "rise_19", "rise_21", "rise_24"] },
+  { wind: ["chop_06", "chop_08", "chop_10", "chop_13"], strike: ["chop_15", "chop_16", "chop_17", "chop_18", "chop_19", "chop_21", "chop_23"] },
 ];
+const VIDEO_SPIN = ["spin_05", "spin_07", "spin_09", "spin_11", "spin_13", "spin_15", "spin_17", "spin_19", "spin_21", "spin_23", "spin_25", "spin_27", "spin_29", "spin_31"];
 let videoAnim = location.hash !== "#keypose";
 // waves: [type, side(+1 right / -1 left), row 0..2]
 const ZONES = [
@@ -450,9 +452,9 @@ const everyTarget = () => [...G.enemies, G.boss].filter(alive);
 
 // ================================================================ players
 const WAR_COMBO = [
-  { wind: 0.07, act: 0.15, end: 0.30, dmg: 13, range: 175, knock: 140 },
-  { wind: 0.07, act: 0.15, end: 0.32, dmg: 15, range: 180, knock: 160 },
-  { wind: 0.15, act: 0.25, end: 0.52, dmg: 26, range: 205, knock: 520, heavy: true, down: true },
+  { wind: 0.09, act: 0.17, end: 0.36, dmg: 13, range: 175, knock: 140 },
+  { wind: 0.09, act: 0.17, end: 0.38, dmg: 15, range: 180, knock: 160 },
+  { wind: 0.16, act: 0.26, end: 0.58, dmg: 26, range: 205, knock: 520, heavy: true, down: true },
 ];
 const MAGE_COMBO = [
   { wind: 0.09, end: 0.30, dmg: 10, big: false },
@@ -1009,16 +1011,17 @@ function pickFrame(e) {
       const a = WAR_COMBO[e.combo_i], pre = st < a.wind;
       if (videoAnim) {
         const v = VIDEO_COMBO[e.combo_i], list = pre ? v.wind : v.strike;
-        const k = pre ? st / a.wind : (st - a.wind) / ((a.end - a.wind) * 0.75);
-        return "vc" + list[Math.min(list.length - 1, Math.floor(clamp(k, 0, 0.999) * list.length))];
+        const k = pre ? st / a.wind : (st - a.wind) / ((a.end - a.wind) * 0.85);
+        return "mv_" + list[Math.min(list.length - 1, Math.floor(clamp(k, 0, 0.999) * list.length))];
       }
       return [["wind", "slash"], ["slash", "rise"], ["wind", "chop"]][e.combo_i][pre ? 0 : 1];
     }
     if (e.state === "airatk") return "chop";
-    if (e.state === "special") return Math.floor(st / 0.07) % 2 ? "slash" : "rise";
+    if (e.state === "special") return videoAnim ? "mv_" + VIDEO_SPIN[Math.min(VIDEO_SPIN.length - 1, Math.floor(st / 0.6 * VIDEO_SPIN.length))] : (Math.floor(st / 0.07) % 2 ? "slash" : "rise");
     if (e.state === "jump" || e.state === "fall") return e.vz > 0 ? "rise" : "idle";
     if (e.state === "dash") return "slash";
-    return locoFrame(e);
+    const lf = locoFrame(e);
+    return lf === "idle" && videoAnim ? "mv_a_idle" : lf;
   }
   if (e.kind === "player") {
     if (e.state === "dash") return "cast";
@@ -1072,11 +1075,11 @@ function drawActor(e, camX) {
   if (e.kind === "boss" && e.state === "walk") { oy = -Math.abs(Math.sin(t * 3)) * 6; rot = Math.sin(t * 3) * 0.02; }
   if ((e.kind === "player" && e.inv > 0 && Math.floor(G.t * 20) % 2 && e.state !== "fall") || (e.state === "dead" && e.st > 0.6 && Math.floor(G.t * 16) % 2)) return;
   let face = e.face;
-  if (e.state === "special" && e.cls === "warrior" && Math.floor(e.st / 0.14) % 2) face = -face;   // spin
+  if (e.state === "special" && e.cls === "warrior" && !videoAnim && Math.floor(e.st / 0.14) % 2) face = -face;   // spin
   ctx.save();
   ctx.translate(sx + ox * e.face, sy + oy);
   ctx.scale(face, 1); ctx.rotate(rot); ctx.scale(sqx, sqy);
-  if (e.prevFrame && G.t - e.frameT < 0.07 && !(fk.startsWith("vc") && e.prevFrame.startsWith("vc"))) {   // smear between key poses
+  if (e.prevFrame && G.t - e.frameT < 0.07 && !(fk.startsWith("mv_") && e.prevFrame.startsWith("mv_"))) {   // smear between key poses
     const pf = set.f[e.prevFrame], pim = pf && IMG[pf.src];
     if (pim) { ctx.globalAlpha = 0.4 * (1 - (G.t - e.frameT) / 0.07); ctx.drawImage(pim, -pf.ax * s, -pim.height * s, pim.width * s, pim.height * s); ctx.globalAlpha = 1; }
   }
