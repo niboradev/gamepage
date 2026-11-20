@@ -60,6 +60,15 @@ const ANIM = {
   golSlamWind: rng("v_slam", 9, 10, 11, 12, 15), golSlam: rng("v_slam", 21, 22, 23),
   golSweepWind: rng("v_sweep", 8, 9, 10, 11, 14, 20), golSweep: rng("v_sweep", 25, 26, 27, 28),
 };
+FRAMES.shield = { px: 292 / 520, f: {} };
+FRAMES.shaman = { px: 236 / 480, f: {} };
+vset("shield", "shield/mv/", ["a_idle", ...rng("walk", ...Array.from({ length: 16 }, (_, i) => 7 + i)), ...rng("atk", 8, 9, 10, 11, 12, 15, 16, 17, 18, 20, 23)], 318.6, 0);
+vset("shaman", "shaman/mv/", ["a_idle", ...rng("walk", ...Array.from({ length: 14 }, (_, i) => 7 + i)), ...rng("cast", 7, 9, 11, 13, 15, 16, 17, 18, 19, 23, 24)], 222.0, 0);
+for (const k of ["shield", "shaman"]) FRAMES[k].f.idle = FRAMES[k].f.v_a_idle;
+Object.assign(ANIM, {
+  shWalk: rng("v_walk", ...Array.from({ length: 16 }, (_, i) => 7 + i)), shWind: rng("v_atk", 8, 9, 10, 11, 12), shStrike: rng("v_atk", 15, 16, 17, 18, 20, 23),
+  saWalk: rng("v_walk", ...Array.from({ length: 14 }, (_, i) => 7 + i)), saWind: rng("v_cast", 7, 9, 11, 13, 15), saStrike: rng("v_cast", 16, 17, 18, 19, 23, 24),
+});
 const ALL_IMAGES = ["warrior", "mage", "orc", "golem", "background", "forest",
   ...new Set(Object.values(FRAMES).flatMap((k) => Object.values(k.f).map((f) => f.src)))];
 
@@ -74,15 +83,19 @@ let videoAnim = location.hash !== "#keypose";
 // waves: [type, side(+1 right / -1 left), row 0..2]
 const ZONES = [
   { at: 1280, wave: [["orc", 1, 0], ["orc", 1, 2], ["orc", -1, 1]] },
-  { at: 2560, wave: [["orc", 1, 0], ["orc", 1, 1], ["archer", 1, 2], ["orc", -1, 2]] },
-  { at: 3840, banner: ["요새 앞마당", "성벽 위로 오크의 깃발이 걸려 있다"], wave: [["orc", 1, 0], ["archer", 1, 1], ["archer", 1, 2], ["orc", -1, 0], ["orc", -1, 2]] },
-  { at: 5120, wave: [["orc", 1, 0], ["orc", 1, 1], ["orc", 1, 2], ["archer", 1, 1], ["orc", -1, 1], ["archer", -1, 0]] },
+  { at: 2560, wave: [["orc", 1, 0], ["shield", 1, 1], ["archer", 1, 2], ["orc", -1, 2]] },
+  { at: 3840, banner: ["요새 앞마당", "성벽 위로 오크의 깃발이 걸려 있다"], wave: [["shield", 1, 0], ["archer", 1, 1], ["shaman", 1, 2], ["orc", -1, 0], ["orc", -1, 2]] },
+  { at: 5120, banner: ["오크 대장", "성문을 지키는 오크 군단의 지휘관"], wave: [["elite", 1, 1], ["shield", 1, 0], ["shaman", 1, 2], ["archer", 1, 2], ["orc", -1, 1]] },
   { at: 6720, boss: true },
 ];
 const ENEMY = {
-  orc:    { hp: 70, dmg: 11, speed: 135, score: 100, xp: 34, shadow: 82 },
-  archer: { hp: 42, dmg: 9,  speed: 150, score: 150, xp: 30, shadow: 60 },
+  orc:    { hp: 70,  dmg: 11, speed: 135, score: 100, xp: 34,  shadow: 82,  wind: 0.48, reach: 170 },
+  archer: { hp: 42,  dmg: 9,  speed: 150, score: 150, xp: 30,  shadow: 60 },
+  shield: { hp: 95,  dmg: 13, speed: 95,  score: 180, xp: 42,  shadow: 84,  wind: 0.5,  reach: 215 },
+  shaman: { hp: 52,  dmg: 13, speed: 140, score: 220, xp: 46,  shadow: 56 },
+  elite:  { hp: 300, dmg: 19, speed: 118, score: 800, xp: 140, shadow: 108, wind: 0.42, reach: 200 },
 };
+const MELEE = new Set(["orc", "shield", "elite"]);
 
 // ================================================================ canvas
 const canvas = document.getElementById("game");
@@ -348,7 +361,8 @@ function makeEnemy(type, x, y) {
   const k = (1 + G.zone * 0.3) * (1 + 0.5 * (G.players.length - 1));
   const hp = Math.round(d.hp * k);
   return {
-    kind: "enemy", type, x, y, z: 0, vz: 0, vx: 0, face: -1, hp, maxHp: hp, dmg: Math.round(d.dmg * (1 + G.zone * 0.2)),
+    kind: "enemy", type, elite: type === "elite", scale: type === "elite" ? 1.3 : 1,
+    x, y, z: 0, vz: 0, vx: 0, face: -1, hp, maxHp: hp, dmg: Math.round(d.dmg * (1 + G.zone * 0.2)),
     state: "enter", st: 0, cd: rand(0.8, 1.8), flash: 0, tint: 0, walkT: rand(0, 5), side: 1, hold: rand(0, 1), dead: false,
   };
 }
@@ -380,6 +394,19 @@ function addScore(p, n) { if (p && p.kind === "player") p.score += n; }
 function damage(target, amt, src, opt = {}) {
   if (!alive(target)) return false;
   if (target.kind === "player" && (target.inv > 0 || target.state === "down" || target.state === "getup")) return false;
+  if (target.type === "shield" && !(target.guardBreak > 0) && src && (src.x - target.x) * target.face > 0 && !opt.unblockable
+      && ["chase", "enter", "windup"].includes(target.state)) {
+    if (opt.heavy) {                                      // heavy blows shatter the guard
+      target.guardBreak = 2.2; floatText(target.x, target.y - 300, "방패 파괴!", "#ffb08a", true);
+      sparks(target.x + target.face * 40, target.y - 150, 26, "#ffffff", 900); SFX.heavy(); shake(10);
+    } else {
+      floatText(target.x + rand(-10, 10), target.y - 280, "막힘", "#cfe8ff");
+      sparks(target.x + target.face * 50, target.y - 150, 10, "#cfe8ff", 600);
+      tone(900, 700, 0.08, 0.12, "square"); G.hitstop = Math.max(G.hitstop, 0.04);
+      target.x -= target.face * 18; target.flash = 0.06;
+      return false;
+    }
+  }
   amt = Math.round(amt * rand(0.92, 1.08) * (target.frozen > 0 ? 1.3 : 1));
   target.hp -= amt;
   target.flash = 0.12;
@@ -411,6 +438,7 @@ function damage(target, amt, src, opt = {}) {
     } else { SFX.hurt(); target.respawn = 3; G.deaths++; target.combo = 0; }
     return true;
   }
+  if (target.elite && !opt.down && !opt.heavy && target.z <= 0) return true;     // super armor vs light hits
   if (opt.down || target.z > 0) { setState(target, "down"); target.vx = dir * (opt.knock || 420); target.vz = 520; target.z = Math.max(target.z, 1); }
   else { setState(target, "hurt"); target.vx = dir * (opt.knock || 160); }
   if (target.kind === "player") { SFX.hurt(); target.combo = 0; }
@@ -439,6 +467,7 @@ function dropLoot(e) {
   else if (r < 0.36) kinds.push("dagger");
   else if (r < 0.44) kinds.push("oil");
   if (r > 0.88) kinds.push("gem");
+  if (e.elite) kinds.push("potion", "gem", "dagger");
   for (const kind of kinds) G.items.push({ kind, x: e.x + rand(-30, 30), y: clamp(e.y + rand(-10, 10), LANE_TOP, LANE_BOT), z: 60, vz: rand(400, 600), vx: rand(-120, 120), t: 0 });
 }
 function updateItems(dt) {
@@ -527,7 +556,7 @@ function updatePlayer(p, dt, c) {
   if (grounded && !busy && c.jump) { p.vz = 980; p.z = 1; p.state = "jump"; p.airAtk = false; }
   // walking into a stunned or idle grunt grabs it
   if (p.state === "walk" && !p.running && dirNow === p.face) {
-    const t = G.enemies.find((e) => alive(e) && ["chase", "enter", "hurt"].includes(e.state) && e.z <= 0 && Math.abs(e.y - p.y) < 22 && (e.x - p.x) * p.face > 0 && (e.x - p.x) * p.face < 70);
+    const t = G.enemies.find((e) => alive(e) && !e.elite && ["chase", "enter", "hurt"].includes(e.state) && e.z <= 0 && Math.abs(e.y - p.y) < 22 && (e.x - p.x) * p.face > 0 && (e.x - p.x) * p.face < 70);
     if (t) { p.grabT += dt; if (p.grabT > 0.22) startGrab(p, t); } else p.grabT = 0;
   } else p.grabT = 0;
   if (c.item && !busy && grounded) useItem(p);
@@ -761,6 +790,7 @@ function enemyCommon(e, dt) {
       if (o !== e && alive(o) && o.state !== "down" && Math.abs(o.x - e.x) < 60 && Math.abs(o.y - e.y) < 40) damage(o, 22 * e.thrownBy.atk, e.thrownBy, { heavy: true, down: true, knock: 520, col: "#ffe2a0" });
     } else e.thrownBy = null;
   }
+  if (e.guardBreak > 0) e.guardBreak -= dt;
   if (e.state === "grabbed") { if (e.st > 1.8) setState(e, "chase"); return true; }
   if (e.frozen > 0) { e.frozen -= dt; if (["chase", "enter", "windup", "aim", "strike", "release"].includes(e.state)) { e.moving = false; e.tint = 0; return true; } }
   if (e.state === "dead") { physics(e, dt); if (e.z <= 0 && e.st > 1.1) e.dead = true; return true; }
@@ -782,24 +812,26 @@ function updateOrc(e, dt) {
   const t = nearestPlayer(e);
   if (!t) { e.moving = false; return; }
   if (e.state === "windup") {
-    e.tint = Math.min(1, e.st / 0.45);
-    if (e.st > 0.48) {
+    const d = ENEMY[e.type];
+    e.tint = Math.min(1, e.st / (d.wind - 0.03));
+    if (e.st > d.wind) {
       setState(e, "strike"); e.x += e.face * 26; SFX.swing();
-      addFx({ type: "claw", x: e.x + e.face * 90, y: e.y - 140, face: e.face, life: 0.14 });
+      addFx({ type: "claw", x: e.x + e.face * (d.reach - 80), y: e.y - 140 * (e.scale || 1), face: e.face, life: 0.14 });
       for (const p of G.players) {
         const dx = (p.x - e.x) * e.face;
-        if (p.state !== "dead" && dx > -20 && dx < 170 && sameLane(e, p) && p.z < 90) damage(p, e.dmg, e, { knock: 220, col: "#ffb08a" });
+        if (p.state !== "dead" && dx > -20 && dx < d.reach && sameLane(e, p) && p.z < 90) damage(p, e.dmg, e, { knock: e.elite ? 480 : 220, down: e.elite, col: "#ffb08a" });
       }
     }
     return;
   }
   if (e.state === "strike") { if (e.st > 0.45) { setState(e, "chase"); e.cd = rand(1.1, 2.0); } return; }
-  const attackers = G.enemies.filter((o) => o !== e && alive(o) && o.type === "orc" && ["windup", "strike"].includes(o.state)).length;
+  const attackers = G.enemies.filter((o) => o !== e && alive(o) && MELEE.has(o.type) && ["windup", "strike"].includes(o.state)).length;
   const side = Math.sign(e.x - t.x) || e.side; e.side = side;
-  const wantDist = attackers >= 2 ? 290 + e.hold * 80 : 125;
-  const dx = moveToward(e, t.x + side * wantDist, t.y + (wantDist > 200 ? (e.hold - 0.5) * 100 : 0), ENEMY.orc.speed, dt);
+  const close = ENEMY[e.type].reach - 45;
+  const wantDist = attackers >= 2 && !e.elite ? 290 + e.hold * 80 : close;
+  const dx = moveToward(e, t.x + side * wantDist, t.y + (wantDist > 250 ? (e.hold - 0.5) * 100 : 0), ENEMY[e.type].speed, dt);
   e.face = Math.sign(t.x - e.x) || e.face;
-  if (wantDist < 200 && Math.abs(dx) < 26 && Math.abs(e.y - t.y) < 22 && e.cd <= 0 && t.z < 60) setState(e, "windup");
+  if (wantDist < 250 && Math.abs(dx) < 26 && Math.abs(e.y - t.y) < 22 && e.cd <= 0 && t.z < 60) setState(e, "windup");
   physics(e, dt);
 }
 function updateArcher(e, dt) {
@@ -825,9 +857,45 @@ function updateArcher(e, dt) {
   if (e.cd <= 0 && dist > 260 && Math.abs(e.y - t.y) < 60) setState(e, "aim");
   physics(e, dt);
 }
+function updateShaman(e, dt) {
+  if (enemyCommon(e, dt)) return;
+  const t = nearestPlayer(e);
+  if (!t) { e.moving = false; return; }
+  if (e.state === "aim") {
+    e.face = Math.sign(t.x - e.x) || e.face;
+    e.tint = Math.min(1, e.st / 0.75);
+    if (e.st > 0.8) {
+      setState(e, "release");
+      if (e.healTarget && alive(e.healTarget)) {
+        const h = e.healTarget, amt = Math.round(h.maxHp * 0.35);
+        h.hp = Math.min(h.maxHp, h.hp + amt);
+        floatText(h.x, h.y - 300, "+" + amt, "#7dff8a", true); sparks(h.x, h.y - 150, 22, "#9dffb0", 420); SFX.heal();
+        addFx({ type: "ring", x: h.x, y: h.y, life: 0.5, col: "#7dff8a", r: 130 });
+      } else {
+        SFX.boom();
+        G.eshots.push({ x: e.x + e.face * 90, y: e.y, z: 150, vx: e.face * 520, face: e.face, dmg: e.dmg, life: 2.2, fire: true });
+      }
+      e.healTarget = null;
+    }
+    return;
+  }
+  if (e.state === "release") { if (e.st > 0.5) { setState(e, "chase"); e.cd = rand(2.6, 3.8); } return; }
+  const side = Math.sign(e.x - t.x) || e.side; e.side = side;
+  const dist = Math.abs(e.x - t.x);
+  const want = dist < 260 ? 600 : clamp(dist, 460, 620);
+  moveToward(e, clamp(t.x + side * want, G.camX + 60, G.camX + W - 60), t.y + (e.hold - 0.5) * 60, ENEMY.shaman.speed * (dist < 260 ? 1.25 : 0.8), dt);
+  e.face = Math.sign(t.x - e.x) || e.face;
+  if (e.cd <= 0) {
+    const hurt = G.enemies.filter((o) => o !== e && alive(o) && o.hp < o.maxHp * 0.7 && Math.abs(o.x - e.x) < 650).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+    if (hurt) { e.healTarget = hurt; setState(e, "aim"); }
+    else if (dist > 300 && Math.abs(e.y - t.y) < 70) setState(e, "aim");
+  }
+  physics(e, dt);
+}
 function updateEShots(dt) {
   for (const s of G.eshots) {
     s.life -= dt; s.x += s.vx * dt;
+    if (s.fire && Math.random() < 0.7) addFx({ type: "ember", x: s.x, y: s.y - s.z, life: 0.35, r: 22 });
     for (const p of G.players) {
       if (p.state === "dead" || s.life <= 0) continue;
       if (Math.abs(p.x - s.x) < 40 && Math.abs(p.y - s.y) < DEPTH_TOL && p.z < 150) {
@@ -1070,7 +1138,7 @@ function update(dt) {
   if (G.banner) { G.banner.t += dt; if (G.banner.t > G.banner.life) G.banner = null; }
   if (G.hitstop > 0) { G.hitstop -= dt; update.held = true; return; }
   G.players.forEach((p, i) => updatePlayer(p, k, controls(i)));
-  for (const e of G.enemies) (e.type === "archer" ? updateArcher : updateOrc)(e, k);
+  for (const e of G.enemies) (e.type === "archer" ? updateArcher : e.type === "shaman" ? updateShaman : updateOrc)(e, k);
   if (G.boss) updateBoss(G.boss, k);
   updateShots(k); updateEShots(k); updateTele(k); updateItems(k); updateZones(k); updateStage(k);
   if (G.goT > 0) G.goT -= dt;
@@ -1196,19 +1264,30 @@ function pickFrame(e) {
     return "v_a_idle";
   }
   if (e.type === "archer") return e.state === "aim" ? "draw" : e.state === "release" ? "release" : "idle";
-  if (e.state === "windup") return seq(ANIM.orcWind, e.st / 0.48);
+  const walking = (e.state === "chase" || e.state === "enter") && e.moving !== false;
+  if (e.type === "shield") {
+    if (e.state === "windup") return seq(ANIM.shWind, e.st / ENEMY.shield.wind);
+    if (e.state === "strike") return seq(ANIM.shStrike, e.st / 0.35);
+    return walking ? ANIM.shWalk[Math.floor(e.walkT * 12) % ANIM.shWalk.length] : "v_a_idle";
+  }
+  if (e.type === "shaman") {
+    if (e.state === "aim") return seq(ANIM.saWind, e.st / 0.8);
+    if (e.state === "release") return seq(ANIM.saStrike, e.st / 0.45);
+    return walking ? ANIM.saWalk[Math.floor(e.walkT * 14) % ANIM.saWalk.length] : "v_a_idle";
+  }
+  if (e.state === "windup") return seq(ANIM.orcWind, e.st / ENEMY[e.type].wind);
   if (e.state === "strike") return seq(ANIM.orcStrike, e.st / 0.3);
   if ((e.state === "chase" || e.state === "enter") && e.moving !== false) return ANIM.orcWalk[Math.floor(e.walkT * 12) % ANIM.orcWalk.length];
   return "v_a_idle";
 }
-const frameSet = (e) => FRAMES[e.kind === "player" ? e.cls : e.kind === "boss" ? "golem" : e.type];
+const frameSet = (e) => FRAMES[e.kind === "player" ? e.cls : e.kind === "boss" ? "golem" : e.type === "elite" ? "orc" : e.type];
 
 function drawActor(e, camX) {
   const set = frameSet(e);
   const fk = pickFrame(e), fr = set.f[fk] || set.f.idle;
   const img = IMG[fr.src]; if (!img) return;
   if (fk !== e.frameKey) { e.prevFrame = e.frameKey; e.frameKey = fk; e.frameT = G.t; }
-  const ds = depthScale(e.y), s = set.px * ds;
+  const ds = depthScale(e.y), s = set.px * ds * (e.scale || 1);
   const w = img.width * s, h = img.height * s, dx0 = fr.flip ? -(img.width - fr.ax) * s : -fr.ax * s, gy = (fr.gy || 0) * s;
   const sx = e.x - camX, sy = e.y - e.z;
   let rot = 0, ox = 0, oy = 0, sqx = 1, sqy = 1;
@@ -1251,11 +1330,21 @@ function drawActor(e, camX) {
   if (e.flash > 0) { ctx.globalAlpha = Math.min(1, e.flash / 0.12); const sil = SIL[fr.src + "#ffffff"]; if (sil) ctx.drawImage(sil, dx0, -h, w, h); }
   else if (e.tint > 0) { ctx.globalAlpha = 0.25 + 0.35 * e.tint * (0.6 + 0.4 * Math.sin(G.t * 40)); const sil = SIL[fr.src + "#ff3b1f"]; if (sil) ctx.drawImage(sil, dx0, -h, w, h); }
   if (e.frozen > 0 || e.slowT > 0) { ctx.globalAlpha = 0.55; ctx.globalCompositeOperation = "lighter"; const sil = SIL[fr.src + "#5ff0dc"]; if (sil) ctx.drawImage(sil, dx0, -h, w, h); ctx.globalCompositeOperation = "source-over"; }
+  if (e.elite) { const sil = SIL[fr.src + "#ff3b1f"]; if (sil) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.16 + 0.08 * Math.sin(G.t * 5); ctx.drawImage(sil, dx0, -h, w, h); ctx.globalCompositeOperation = "source-over"; } }
   if (e.kind === "boss") {
     const sil = SIL[fr.src + "#5ff0dc"];
     if (sil) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.08 + 0.06 * Math.sin(G.t * 3) + (e.rage ? 0.1 : 0); ctx.drawImage(sil, dx0, -h, w, h); }
   }
   ctx.restore();
+  if (e.elite && alive(e)) {
+    const hy = sy - 300 * ds * e.scale;
+    ctx.save(); ctx.font = FONT(15, 900); ctx.textAlign = "center"; strokeText("오크 대장", sx, hy - 12, "#ffb08a", 4);
+    bar(sx - 60, hy - 6, 120, 9, e.hp / e.maxHp, "#ff5a3a"); ctx.restore();
+  }
+  if (e.type === "shield" && e.guardBreak > 0) {
+    ctx.save(); ctx.font = FONT(13, 900); ctx.textAlign = "center"; ctx.globalAlpha = 0.6 + 0.4 * Math.sin(G.t * 12);
+    strokeText("무방비", sx, sy - 300 * ds, "#ffb08a", 4); ctx.restore();
+  }
   if (e.type === "archer" && e.state === "aim") {     // aiming line telegraph
     ctx.save(); ctx.strokeStyle = `rgba(255,90,60,${0.25 + 0.4 * e.tint})`; ctx.setLineDash([10, 10]); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(sx + e.face * 90, sy - 150 * ds); ctx.lineTo(sx + e.face * 900, sy - 150 * ds); ctx.stroke(); ctx.restore();
@@ -1460,8 +1549,14 @@ function drawShots(camX) {
     ctx.beginPath(); ctx.moveTo(x - s.face * r * 2.2, y); ctx.lineTo(x + s.face * r * 0.4, y); ctx.stroke();
     ctx.restore();
   }
-  for (const s of G.eshots) {   // arrows
+  for (const s of G.eshots) {   // arrows and shaman fireballs
     const x = s.x - camX, y = s.y - s.z;
+    if (s.fire) {
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 40);
+      g.addColorStop(0, "rgba(255,250,210,1)"); g.addColorStop(0.35, "rgba(255,130,40,0.95)"); g.addColorStop(1, "rgba(180,30,0,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 40, 0, Math.PI * 2); ctx.fill(); ctx.restore(); continue;
+    }
     ctx.save(); ctx.translate(x, y); ctx.scale(s.face, 1);
     ctx.strokeStyle = "#3a2410"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-46, 0); ctx.lineTo(10, 0); ctx.stroke();
     ctx.strokeStyle = "#d9b77a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-46, 0); ctx.lineTo(10, 0); ctx.stroke();
