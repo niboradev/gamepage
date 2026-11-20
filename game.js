@@ -43,8 +43,8 @@ const FRAMES = {
     slam: { src: "golem/g_slam", ax: 446.9 }, sweep: { src: "golem/g_sweep", ax: 228.1 } } },
 };
 // add a set of video frames (shared crop => one feet anchor `ax`, ground gap `gy`)
-function vset(set, dir, names, ax, gy = 0, flip = null) {
-  for (const n of names) FRAMES[set].f["v_" + n] = { src: dir + n, ax, gy, flip: !!(flip && flip.test(n)) };
+function vset(set, dir, names, ax, gy = 0, flip = null, pre = "v_") {
+  for (const n of names) FRAMES[set].f[pre + n] = { src: dir + n, ax, gy, flip: !!(flip && flip.test(n)) };
 }
 const rng = (tag, ...ids) => ids.map((i) => tag + "_" + String(i).padStart(2, "0"));
 vset("mage", "mage/mv/", ["a_idle", ...rng("bolt", 9, 11, 13, 15, 17, 19), ...rng("storm", 8, 10, 12, 13, 14, 17, 20, 23, 26, 29, 31)], 360.4, 1);
@@ -60,6 +60,23 @@ const ANIM = {
   golSlamWind: rng("v_slam", 9, 10, 11, 12, 15), golSlam: rng("v_slam", 21, 22, 23),
   golSweepWind: rng("v_sweep", 8, 9, 10, 11, 14, 20), golSweep: rng("v_sweep", 25, 26, 27, 28),
 };
+// locomotion, archer and orc knockdown clips
+const seqN = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+vset("warrior", "warrior/mvw/", ["a_idle", ...rng("walk", ...seqN(4, 27)), ...rng("run", ...seqN(12, 35))], 275.9, 13, null, "l_");
+vset("mage", "mage/mvw/", ["a_idle", ...rng("walk", ...seqN(12, 35)), ...rng("run", ...seqN(7, 30))], 232.4, 3, null, "l_");
+vset("archer", "archer/mv/", ["a_idle", ...rng("walk", ...seqN(5, 28)), ...rng("shoot", 7, 8, 9, 10, 11, 13, 16, 20, 24, 26, 28, 30)], 244.3, 3);
+vset("orc", "orc/mvd/", ["a_idle", ...rng("down", 6, 7, 8, 9, 10, 11, 12, 13, 20, 32, 34, 36, 38, 40, 42, 44, 46)], 289.9, 1, null, "d_");
+// drop the old key-pose sheet frames from loading: every set now idles on a video frame
+for (const [set, idle] of [["warrior", "mv_a_idle"], ["mage", "v_a_idle"], ["orc", "v_a_idle"], ["archer", "v_a_idle"], ["golem", "v_a_idle"]]) {
+  for (const k of Object.keys(FRAMES[set].f)) if (!/^(mv_|v_|d_|l_)/.test(k)) delete FRAMES[set].f[k];
+  FRAMES[set].f.idle = FRAMES[set].f[idle];
+}
+Object.assign(ANIM, {
+  warWalk: rng("l_walk", ...seqN(4, 27)), warRun: rng("l_run", ...seqN(12, 35)),
+  mageWalk: rng("l_walk", ...seqN(12, 35)), mageRun: rng("l_run", ...seqN(7, 30)),
+  arWalk: rng("v_walk", ...seqN(5, 28)), arAim: rng("v_shoot", 7, 8, 9, 10, 11, 13, 16), arShot: rng("v_shoot", 20, 24, 26, 28, 30),
+  orcFall: rng("d_down", 6, 7, 8, 9, 10, 11, 12, 13), orcGetup: rng("d_down", 32, 34, 36, 38, 40, 42, 44, 46),
+});
 FRAMES.shield = { px: 292 / 520, f: {} };
 FRAMES.shaman = { px: 236 / 480, f: {} };
 vset("shield", "shield/mv/", ["a_idle", ...rng("walk", ...Array.from({ length: 16 }, (_, i) => 7 + i)), ...rng("atk", 8, 9, 10, 11, 12, 15, 16, 17, 18, 20, 23)], 318.6, 0);
@@ -69,7 +86,7 @@ Object.assign(ANIM, {
   shWalk: rng("v_walk", ...Array.from({ length: 16 }, (_, i) => 7 + i)), shWind: rng("v_atk", 8, 9, 10, 11, 12), shStrike: rng("v_atk", 15, 16, 17, 18, 20, 23),
   saWalk: rng("v_walk", ...Array.from({ length: 14 }, (_, i) => 7 + i)), saWind: rng("v_cast", 7, 9, 11, 13, 15), saStrike: rng("v_cast", 16, 17, 18, 19, 23, 24),
 });
-const ALL_IMAGES = ["warrior", "mage", "orc", "golem", "background", "forest",
+const ALL_IMAGES = ["warrior", "mage", "background", "forest", "keyart",
   ...new Set(Object.values(FRAMES).flatMap((k) => Object.values(k.f).map((f) => f.src)))];
 
 // warrior combo from video frames (Kling 3.0 clip, 12 fps): frames per combo hit, split into wind-up and strike
@@ -79,7 +96,7 @@ const VIDEO_COMBO = [
   { wind: ["chop_06", "chop_08", "chop_10", "chop_13"], strike: ["chop_15", "chop_16", "chop_17", "chop_18", "chop_19", "chop_21", "chop_23"] },
 ];
 const VIDEO_SPIN = ["spin_05", "spin_07", "spin_09", "spin_11", "spin_13", "spin_15", "spin_17", "spin_19", "spin_21", "spin_23", "spin_25", "spin_27", "spin_29", "spin_31"];
-let videoAnim = location.hash !== "#keypose";
+const videoAnim = true;
 // waves: [type, side(+1 right / -1 left), row 0..2]
 const ZONES = [
   { at: 1280, wave: [["orc", 1, 0], ["orc", 1, 2], ["orc", -1, 1]] },
@@ -112,11 +129,23 @@ window.addEventListener("resize", fitCanvas);
 
 // ================================================================ assets
 const IMG = {}, SIL = {}, PORTRAIT = {};
+let loadDone = 0, loadTotal = 1;
+function drawLoading() {
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
+  ctx.fillStyle = "#120d0a"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#3a2a1a"; ctx.fillRect(W / 2 - 220, H / 2 + 20, 440, 10);
+  ctx.fillStyle = "#f0a63a"; ctx.fillRect(W / 2 - 220, H / 2 + 20, 440 * loadDone / loadTotal, 10);
+  ctx.font = '40px "Black Han Sans", "Noto Sans KR", sans-serif'; ctx.textAlign = "center"; ctx.fillStyle = "#ffd27a";
+  ctx.fillText("잿불의 왕관", W / 2, H / 2 - 20);
+  ctx.font = '700 15px "Noto Sans KR", sans-serif'; ctx.fillStyle = "#cdb99a";
+  ctx.fillText(`불러오는 중... ${Math.floor(100 * loadDone / loadTotal)}%`, W / 2, H / 2 + 60);
+}
 function loadImg(name) {
   return new Promise((res) => {
     const im = new Image();
-    im.onload = () => { IMG[name] = im; res(); };
-    im.onerror = () => res();
+    const done = () => { loadDone++; drawLoading(); res(); };
+    im.onload = () => { IMG[name] = im; done(); };
+    im.onerror = () => done();
     im.src = "assets/" + name + ".webp";
   });
 }
@@ -217,10 +246,32 @@ const MUSIC = {
 };
 let music = { song: null, step: 0, next: 0, timer: null };
 const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+// real music files (web/audio/bgm_stage.mp3, bgm_boss.mp3) replace the synth when present
+// add entries here once the tracks exist, e.g. { stage: "audio/bgm_stage.mp3", boss: "audio/bgm_boss.mp3" }
+const MUSIC_FILES = {};
+const musicRaw = {}, musicBuf = {};
+function loadMusicFiles() {
+  for (const [k, url] of Object.entries(MUSIC_FILES)) {
+    fetch(url).then((r) => (r.ok ? r.arrayBuffer() : null)).then((b) => { if (b) musicRaw[k] = b; }).catch(() => {});
+  }
+}
+let musicSrc = null, musicGain = null;
 function playMusic(name) {
   if (music.song === name) return;
   stopMusic(); music.song = name;
   if (!AC) return;
+  if (musicRaw[name] || musicBuf[name]) {
+    const go = (buf) => {
+      if (music.song !== name) return;
+      musicBuf[name] = buf;
+      musicSrc = AC.createBufferSource(); musicSrc.buffer = buf; musicSrc.loop = true;
+      musicGain = AC.createGain(); musicGain.gain.value = muted ? 0 : 0.55;
+      musicSrc.connect(musicGain).connect(outNode()); musicSrc.start();
+    };
+    if (musicBuf[name]) go(musicBuf[name]);
+    else AC.decodeAudioData(musicRaw[name].slice(0)).then(go).catch(() => {});
+    return;
+  }
   music.next = AC.currentTime + 0.1;
   music.timer = setInterval(() => {
     if (!AC || !music.song) return;
@@ -239,7 +290,11 @@ function playMusic(name) {
     }
   }, 30);
 }
-function stopMusic() { if (music.timer) clearInterval(music.timer); music = { song: null, step: 0, next: 0, timer: null }; }
+function stopMusic() {
+  if (music.timer) clearInterval(music.timer);
+  if (musicSrc) { try { musicSrc.stop(); } catch (e) { /* already stopped */ } musicSrc = null; }
+  music = { song: null, step: 0, next: 0, timer: null };
+}
 
 // ================================================================ input
 const KEYMAP = [
@@ -252,8 +307,7 @@ window.addEventListener("keydown", (e) => {
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
   if (!keys.has(e.code)) pressedOnce.add(e.code);
   keys.add(e.code);
-  if (e.code === "KeyM") muted = !muted;
-  if (e.code === "KeyV") { videoAnim = !videoAnim; if (G) floatText(G.camX + W / 2, 260, videoAnim ? "공격 애니메이션: 영상 프레임" : "공격 애니메이션: 키 자세", "#9ff6ea"); }
+  if (e.code === "KeyM") { muted = !muted; if (musicGain) musicGain.gain.value = muted ? 0 : 0.55; }
   if (e.code === "Escape" || e.code === "KeyP") togglePause();
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
@@ -409,7 +463,7 @@ function damage(target, amt, src, opt = {}) {
   }
   amt = Math.round(amt * rand(0.92, 1.08) * (target.frozen > 0 ? 1.3 : 1));
   target.hp -= amt;
-  target.flash = 0.12;
+  target.flash = 0.12; target.hpShowT = 2.5;
   const hx = target.x, hy = target.y - (target.kind === "boss" ? 300 : 150) - target.z;
   const fromX = src ? src.x : hx;
   floatText(hx + rand(-20, 20), hy - 30, String(amt), target.kind === "player" ? "#ff6a5a" : (opt.crit ? "#ffe27a" : "#ffffff"), opt.crit);
@@ -1219,7 +1273,8 @@ function drawDust() {
 const LOOP = [1, 2, 3, 2];
 function locoFrame(e) {
   if (e.state !== "walk") return "idle";
-  return (e.running ? "run" : "walk") + LOOP[Math.floor(e.phase) % 4];
+  const w = e.cls === "warrior", list = e.running ? (w ? ANIM.warRun : ANIM.mageRun) : (w ? ANIM.warWalk : ANIM.mageWalk);
+  return list[Math.floor(e.phase * (e.running ? 3.2 : 3)) % list.length];
 }
 // pick the key pose for an actor
 function pickFrame(e) {
@@ -1234,17 +1289,18 @@ function pickFrame(e) {
       }
       return [["wind", "slash"], ["slash", "rise"], ["wind", "chop"]][e.combo_i][pre ? 0 : 1];
     }
-    if (e.state === "airatk") return "chop";
+    if (e.state === "airatk") return "mv_chop_17";
+    if (e.state === "hurt") return "d_down_07";
     if (e.state === "special") return videoAnim ? "mv_" + VIDEO_SPIN[Math.min(VIDEO_SPIN.length - 1, Math.floor(st / 0.6 * VIDEO_SPIN.length))] : (Math.floor(st / 0.07) % 2 ? "slash" : "rise");
-    if (e.state === "jump" || e.state === "fall") return e.vz > 0 ? "rise" : "idle";
-    if (e.state === "dash") return "slash";
+    if (e.state === "jump" || e.state === "fall") return e.vz > 0 ? "mv_rise_18" : "mv_rise_21";
+    if (e.state === "dash") return "mv_slash_21";
     if (e.state === "grab") return "mv_slash_19";
     if (e.state === "throw") return "mv_slash_22";
     if (e.state === "desp") return "mv_" + VIDEO_SPIN[Math.min(VIDEO_SPIN.length - 1, Math.floor(st / 0.5 * VIDEO_SPIN.length))];
     if (e.state === "down" || (e.state === "dead")) return e.z > 0 || st < 0.3 ? seq(ANIM.warFall, st / 0.45) : "d_down_16";
     if (e.state === "getup") return seq(ANIM.warGetup, st / 0.45);
     const lf = locoFrame(e);
-    return lf === "idle" && videoAnim ? "mv_a_idle" : lf;
+    return lf === "idle" ? "mv_a_idle" : lf;
   }
   if (e.kind === "player") {
     if (e.state === "dash" || e.state === "airatk" || e.state === "grab" || e.state === "throw") return seq(ANIM.mageBolt, 0.5);
@@ -1263,7 +1319,16 @@ function pickFrame(e) {
     if (e.state === "rubble") return st < 0.35 ? seq(ANIM.golSlamWind, st / 0.35) : seq(ANIM.golSlam, (st - 0.35) / 0.25);
     return "v_a_idle";
   }
-  if (e.type === "archer") return e.state === "aim" ? "draw" : e.state === "release" ? "release" : "idle";
+  if (e.type === "archer") {
+    if (e.state === "aim") return seq(ANIM.arAim, e.st / 0.7);
+    if (e.state === "release") return seq(ANIM.arShot, e.st / 0.35);
+    return (e.state === "chase" || e.state === "enter") && e.moving !== false ? ANIM.arWalk[Math.floor(e.walkT * 14) % ANIM.arWalk.length] : "v_a_idle";
+  }
+  if (e.type === "orc" || e.type === "elite") {
+    if (e.state === "down" || e.state === "dead") return e.z > 0 || e.st < 0.4 ? seq(ANIM.orcFall, e.st / 0.5) : "d_down_20";
+    if (e.state === "getup") return seq(ANIM.orcGetup, e.st / 0.4);
+    if (e.state === "hurt") return "d_down_07";
+  }
   const walking = (e.state === "chase" || e.state === "enter") && e.moving !== false;
   if (e.type === "shield") {
     if (e.state === "windup") return seq(ANIM.shWind, e.st / ENEMY.shield.wind);
@@ -1280,6 +1345,7 @@ function pickFrame(e) {
   if ((e.state === "chase" || e.state === "enter") && e.moving !== false) return ANIM.orcWalk[Math.floor(e.walkT * 12) % ANIM.orcWalk.length];
   return "v_a_idle";
 }
+const hasFall = (e) => (e.kind === "player" && e.cls === "warrior") || e.type === "orc" || e.type === "elite";
 const frameSet = (e) => FRAMES[e.kind === "player" ? e.cls : e.kind === "boss" ? "golem" : e.type === "elite" ? "orc" : e.type];
 
 function drawActor(e, camX) {
@@ -1294,17 +1360,17 @@ function drawActor(e, camX) {
   const t = e.walkT || 0, st = e.st;
   switch (e.state) {
     case "idle": case "chase": case "enter": case "walk":
-      if (e.kind === "player" && e.state === "walk") { oy = -Math.abs(Math.sin(e.phase * Math.PI)) * (e.running ? 5 : 3); rot = e.running ? 0.05 : 0; }
+      if (e.kind === "player" && e.state === "walk") { oy = 0; rot = 0; }
       else if (e.state === "walk" || (e.state !== "idle" && e.moving !== false)) { oy = -Math.abs(Math.sin(t * 10)) * 6; rot = Math.sin(t * 10) * 0.03; }
       else { sqy = 1 + Math.sin(t * 3) * 0.012; sqx = 1 - Math.sin(t * 3) * 0.006; }
       break;
     case "jump": case "fall": sqy = e.vz > 0 ? 1.05 : 0.98; sqx = 2 - sqy; rot = -0.04; break;
     case "attack": rot = st < 0.08 ? -0.03 : 0.04 * (1 - clamp(st / 0.3, 0, 1)); ox = st < 0.08 ? -4 : 8 * (1 - clamp(st / 0.3, 0, 1)); break;
     case "special": if (e.cls === "mage") oy = -Math.min(st, 0.2) * 60; break;
-    case "hurt": rot = -0.16; ox = -10; break;
+    case "hurt": rot = hasFall(e) ? -0.05 : -0.16; ox = -10; break;
     case "dash": rot = 0.06; break;
-    case "down": case "dead": if (!(e.kind === "player" && e.cls === "warrior")) rot = -Math.min(1, st * 5) * 1.35; break;
-    case "getup": if (!(e.kind === "player" && e.cls === "warrior")) rot = -1.35 * (1 - st / 0.35); break;
+    case "down": case "dead": if (!hasFall(e)) rot = -Math.min(1, st * 5) * 1.35; break;
+    case "getup": if (!hasFall(e)) rot = -1.35 * (1 - st / 0.35); break;
     case "grabbed": rot = -0.18; break;
     case "windup": case "aim": sqy = 1.02; break;
     case "slamWind": case "sweepWind": rot = -0.06 * Math.min(1, st * 3); ox = -10; sqy = 1.03; break;
@@ -1340,6 +1406,12 @@ function drawActor(e, camX) {
     const hy = sy - 300 * ds * e.scale;
     ctx.save(); ctx.font = FONT(15, 900); ctx.textAlign = "center"; strokeText("오크 대장", sx, hy - 12, "#ffb08a", 4);
     bar(sx - 60, hy - 6, 120, 9, e.hp / e.maxHp, "#ff5a3a"); ctx.restore();
+  }
+  if (e.kind === "enemy" && !e.elite && e.hpShowT > 0 && alive(e)) {
+    e.hpShowT -= 1 / 60;
+    ctx.save(); ctx.globalAlpha = Math.min(1, e.hpShowT * 2);
+    bar(sx - 40, sy - (e.type === "shaman" ? 250 : 300) * ds, 80, 7, e.hp / e.maxHp, "#ff5a3a");
+    ctx.restore();
   }
   if (e.type === "shield" && e.guardBreak > 0) {
     ctx.save(); ctx.font = FONT(13, 900); ctx.textAlign = "center"; ctx.globalAlpha = 0.6 + 0.4 * Math.sin(G.t * 12);
@@ -1681,8 +1753,14 @@ function drawHUD() {
 }
 const isTouch = () => !touchUI.hidden;
 function drawTitle(t) {
-  drawBackground((t * 30) % 3000);
-  ctx.fillStyle = "rgba(14,8,4,0.45)"; ctx.fillRect(0, 0, W, H);
+  const ka = IMG.keyart;
+  if (ka) {
+    const s = Math.max(W / ka.width, H / ka.height) * (1.04 + 0.02 * Math.sin(t * 0.2));
+    ctx.drawImage(ka, (W - ka.width * s) / 2, (H - ka.height * s) / 2, ka.width * s, ka.height * s);
+  } else drawBackground((t * 30) % 3000);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "rgba(14,8,4,0.55)"); g.addColorStop(0.45, "rgba(14,8,4,0.25)"); g.addColorStop(1, "rgba(14,8,4,0.8)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   ctx.save(); ctx.textAlign = "center";
   ctx.font = DFONT(96); strokeText("잿불의 왕관", W / 2, 150, "#ffd27a", 12);
   ctx.font = FONT(18, 700); ctx.fillStyle = "#f6ead2"; ctx.fillText("CROWN OF EMBERS · 가제 · STAGE 1", W / 2, 186);
@@ -1781,7 +1859,9 @@ async function start() {
   fitCanvas();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#120d0a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  loadTotal = ALL_IMAGES.length; drawLoading();
   await Promise.all(ALL_IMAGES.map(loadImg));
+  loadMusicFiles();
   for (const set of Object.values(FRAMES)) for (const f of Object.values(set.f)) { makeSilhouette(f.src, "#ffffff"); makeSilhouette(f.src, "#ff3b1f"); }
   for (const set of Object.values(FRAMES)) for (const f of Object.values(set.f)) makeSilhouette(f.src, "#5ff0dc");
   makePortrait("warrior"); makePortrait("mage");
